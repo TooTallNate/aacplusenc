@@ -73,7 +73,6 @@ int main(int argc, char *argv[])
 	int envWriteOffset = 0;
 	int envReadOffset = 0;
 	int writeOffset = INPUT_DELAY * MAX_CHANNELS;
-	int percent = -1;
 
 	struct AAC_ENCODER *aacEnc = 0;
 
@@ -96,13 +95,14 @@ int main(int argc, char *argv[])
 		"* Enhanced aacPlus Encoder\n"
 		"* Build %s, %s\n"
 		"* Matteo Croce <rootkit85@yahoo.it>\n"
+		"* Raw PCM Modifications by Nathan Rajlich <nathan@tootallnate.net>\n"
 		"*************************************************************\n\n",
 		__DATE__, __TIME__);
 
 	/*
 	 * parse command line arguments
 	 */
-	if (argc != 4) {
+	/*if (argc != 4) {
 		fprintf(stderr,
 			"\nUsage:   %s <source.wav> <destination.aac> <bitrate>\n",
 			argv[0]);
@@ -111,9 +111,7 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "\nExample: %s song.wav song.aac 32\n",
 			argv[0]);
 		return 0;
-	}
-
-	bitrate = atoi(argv[3]) * 1000;;
+	}*/
 
 	fflush(stderr);
 
@@ -121,10 +119,18 @@ int main(int argc, char *argv[])
 	   open audio input file
 	 */
 
-	inputFile = AuChannelOpen(argv[1], &inputInfo);
+	/* Skip reading a WAV Header. stdin is expecting raw PCM audio data. */
+	inputFile = stdin;
+
+  /* Hard-coded, should be command-line args in a perfect world. */
+  inputInfo.nChannels = 2;
+  inputInfo.sampleRate = 44100;
+  
+  /* AAC output bitrate */
+	bitrate = 64000;
 
 	if (!inputFile) {
-		fprintf(stderr, "could not open %s\n", argv[1]);
+		fprintf(stderr, "could not open stdin\n");
 		exit(10);
 	}
 
@@ -281,25 +287,13 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	if (strcmp(argv[2], "-") == 0)
-		hADTSFile = stdout;
-	else
-		hADTSFile = fopen(argv[2], "wb");
+  /* Force writing the AAC ADTS file to stdout. */
+	hADTSFile = stdout;
 
 	if (!hADTSFile) {
 		fprintf(stderr, "\nFailed to create ADTS file\n");
 		exit(10);
 	}
-
-	/*
-	   Be verbose
-	 */
-
-	fprintf(stderr, "input file %s: \nsr = %d, nc = %d\n\n", argv[1],
-		inputInfo.sampleRate, inputInfo.nChannels);
-	fprintf(stderr, "output file %s: \nbr = %d sr-OUT = %d  nc-OUT = %d\n\n",
-		argv[2], bitrate, sampleRateAAC * 2, nChannelsSBR);
-	fflush(stderr);
 
 	init_plans();
 
@@ -327,7 +321,7 @@ int main(int argc, char *argv[])
 	   The frame loop
 	 */
 	while (1) {
-		int i, ch, outSamples, numOutBytes, newpercent = -1;
+		int i, ch, outSamples, numOutBytes = -1;
 
 		/*
 		   File input read, resample and downmix
@@ -517,14 +511,6 @@ int main(int argc, char *argv[])
 
 		frmCnt++;
 
-		/* 3GPP instrumenting tool: measure worst case work load at end of each decoding loop */
-
-		newpercent = frmCnt * AACENC_BLOCKSIZE * inputInfo.nChannels / (inputInfo.nSamples / (4 * 100));
-		if (newpercent != percent) {
-			percent = newpercent;
-			fprintf(stderr, "[%d%%]\r", newpercent);
-			fflush(stderr);
-		}
 	}
 	fprintf(stderr, "\n");
 	fflush(stderr);
